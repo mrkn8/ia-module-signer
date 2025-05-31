@@ -59,4 +59,4 @@ The path to the configuration file for hardware token support (YubiKey, SafeNet,
 
 ### algo
 The algorithm used to sign your module with, only necessary if the private key algorithm cannot be derived automatically.<br>
-Supported values: `SHAH265withRSA`, `SHA256withECDSA`, `SHA384withECDSA`, `SHA512withECDSA`
+Supported values: `SHAH256withRSA`, `SHA256withECDSA`, `SHA384withECDSA`, `SHA512withECDSA`
