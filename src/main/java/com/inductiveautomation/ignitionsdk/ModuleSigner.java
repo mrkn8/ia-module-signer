@@ -38,12 +38,11 @@ public class ModuleSigner {
         this.chainInputStream = chainInputStream;
     }
 
-    public void signModule(File moduleFileIn, File moduleFileOut) throws IOException {
-        signModule(System.out, moduleFileIn, moduleFileOut);
+    public void signModule(File moduleFileIn, File moduleFileOut, String algo) throws IOException {
+        signModule(System.out, moduleFileIn, moduleFileOut, algo);
     }
 
-    public void signModule(PrintStream printStream, File moduleFileIn, File moduleFileOut) throws IOException {
-        /** Filename -> Base64-encoded SHA256withRSA asymmetric signature of file contents. */
+    public void signModule(PrintStream printStream, File moduleFileIn, File moduleFileOut, String algo) throws IOException {
         Properties signatures = new Properties();
 
         ZipMap zipMap = new ZipMap(moduleFileIn);
@@ -56,7 +55,7 @@ public class ModuleSigner {
                 printStream.println(fileName);
 
                 try {
-                    byte[] sig = asymmetricSignature(privateKey, file.getBytes());
+                    byte[] sig = asymmetricSignature(privateKey, file.getBytes(), algo);
                     String b64 = Base64.getEncoder().encodeToString(sig);
 
                     signatures.put(fileName, b64);
@@ -91,13 +90,47 @@ public class ModuleSigner {
     }
 
 
-    private static byte[] asymmetricSignature(PrivateKey privateKey, byte[] bs) throws GeneralSecurityException {
-        Signature signature = Signature.getInstance("SHA256withRSA");
+    private static byte[] asymmetricSignature(PrivateKey privateKey, byte[] bs, String algo) throws GeneralSecurityException {
+        Signature signature = algo.isEmpty() ? getAppropriateSignature(privateKey) : Signature.getInstance(algo);
         signature.initSign(privateKey);
 
         signature.update(bs);
 
         return signature.sign();
+    }
+
+    private static Signature getAppropriateSignature(PrivateKey privateKey) throws GeneralSecurityException {
+        String algo;
+
+        switch (privateKey.getAlgorithm()) {
+            case "RSA":
+                algo = "SHA256withRSA";
+                break;
+
+            case "EC":
+                if (privateKey instanceof java.security.interfaces.ECPrivateKey) {
+                    java.security.interfaces.ECPrivateKey ecKey = (java.security.interfaces.ECPrivateKey) privateKey;
+                    int keySize = ecKey.getParams().getCurve().getField().getFieldSize();
+
+                    if (keySize <= 256) {
+                        algo = "SHA256withECDSA";
+                    } else if (keySize <= 384) {
+                        algo = "SHA384withECDSA";
+                    } else if (keySize <= 521) {
+                        algo = "SHA512withECDSA";
+                    } else {
+                        throw new GeneralSecurityException("Unsupported EC key size: " + keySize);
+                    }
+                } else {
+                    algo = "SHA256withECDSA";
+                }
+                break;
+
+            default:
+                throw new GeneralSecurityException("Unsupported key algorithm: " + privateKey.getAlgorithm());
+        }
+
+        return Signature.getInstance(algo);
     }
 
     public static class Main {
@@ -110,6 +143,7 @@ public class ModuleSigner {
         public static final String OPT_MODULE_IN = "module-in";
         public static final String OPT_MODULE_OUT = "module-out";
         public static final String OPT_PKCS11_CFG = "pkcs11-cfg";
+        public static final String OPT_ALGO = "algo";
         public static final String OPT_VERBOSE = "verbose";
 
         public static void main(String[] args) throws Exception {
@@ -137,8 +171,8 @@ public class ModuleSigner {
 
             Key privateKey = keyStore.getKey(alias, aliasPwd.toCharArray());
 
-            if (privateKey == null || !privateKey.getAlgorithm().equalsIgnoreCase("RSA")) {
-                System.out.println("no RSA PrivateKey found for alias '" + alias + "'.");
+            if (privateKey == null) {
+                System.out.println("No private key found for alias '" + alias + "'.");
                 System.exit(-1);
             }
 
@@ -152,7 +186,7 @@ public class ModuleSigner {
             PrintStream printStream = commandLine.hasOption(OPT_VERBOSE) ?
                     System.out : new PrintStream(NullOutputStream.NULL_OUTPUT_STREAM);
 
-            moduleSigner.signModule(printStream, moduleIn, moduleOut);
+            moduleSigner.signModule(printStream, moduleIn, moduleOut, commandLine.getOptionValue(OPT_ALGO, ""));
         }
 
         private static Options makeOptions() {
@@ -202,6 +236,12 @@ public class ModuleSigner {
                     .hasArg()
                     .build();
 
+            Option algo = Option.builder()
+                    .longOpt(OPT_ALGO)
+                    .required(false)
+                    .hasArg()
+                    .build();
+
             Option verbose = Option.builder("v")
                     .longOpt(OPT_VERBOSE)
                     .required(false)
@@ -216,6 +256,7 @@ public class ModuleSigner {
                     .addOption(moduleIn)
                     .addOption(moduleOut)
                     .addOption(pkcs11Cfg)
+                    .addOption(algo)
                     .addOption(verbose);
         }
 
