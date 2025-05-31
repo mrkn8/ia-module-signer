@@ -19,7 +19,7 @@ Invocation from the command-line:
 ```
 java -jar module-signer.jar \ 
 	-keystore=<path-to-my-keystore>/keystore.jks \
-	-keystore-pwd=<password> \
+	-keystore-pwd=<password-or-pin> \
 	-alias=server \
 	-alias-pwd=<password> \
 	-chain=<pathToMyp7b>/cert.p7b \
@@ -58,5 +58,5 @@ The path the signed module will be written to.
 The path to the configuration file for hardware token support (YubiKey, SafeNet, etc.)
 
 ### algo
-The algorithm used to sign your module with:<br>
-Supported values: `SHAH265withRSA` (default), `SHA256withECDSA`, `SHA384withECDSA`, `SHA512withECDSA`
+The algorithm used to sign your module with, only necessary if the private key algorithm cannot be derived automatically.<br>
+Supported values: `SHAH265withRSA`, `SHA256withECDSA`, `SHA384withECDSA`, `SHA512withECDSA`
